@@ -21,6 +21,8 @@ NOTES</textarea></label>
 <label><input id="mixed" type="checkbox"> Campur huruf besar dan kecil</label>
 <button id="shuffle" type="button">Acak lagi ↻</button>
 <button id="download" type="button">Unduh SVG ↓</button>
+<button id="downloadPng" type="button">Unduh PNG ↓</button>
+<div id="exportStatus" role="status"></div>
 </section>
 <section class="stage" id="stage" aria-label="Preview kolase"></section>
 </div>
@@ -107,6 +109,7 @@ function draw() {
   }
   currentSvg=rows.length?svg:null;
   el('download').disabled=!currentSvg;
+  el('downloadPng').disabled=!currentSvg;
 }
 function shuffle() {
   seed=crypto.getRandomValues(new Uint32Array(1))[0];
@@ -114,13 +117,40 @@ function shuffle() {
 }
 for(const id of ['note','palette','tilt','rough','gap','grain','mixed']) el(id).addEventListener('input',draw);
 el('shuffle').addEventListener('click',shuffle);
-el('download').addEventListener('click',()=>{
-  if(!currentSvg)return;
-  const data=new XMLSerializer().serializeToString(currentSvg);
-  const url=URL.createObjectURL(new Blob([data],{type:'image/svg+xml;charset=utf-8'}));
+function download(blob, filename) {
+  const url=URL.createObjectURL(blob);
   const link=document.createElement('a');
-  link.href=url; link.download='ransom-note.svg'; link.click();
+  link.href=url; link.download=filename; link.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function svgBlob() {
+  return new Blob([new XMLSerializer().serializeToString(currentSvg)],{type:'image/svg+xml;charset=utf-8'});
+}
+el('download').addEventListener('click',()=>{
+  if(currentSvg) download(svgBlob(),'ransom-note.svg');
+});
+el('downloadPng').addEventListener('click',async ()=>{
+  if(!currentSvg)return;
+  const status=el('exportStatus');
+  status.textContent='';
+  const url=URL.createObjectURL(svgBlob());
+  try {
+    const image=new Image();
+    image.src=url;
+    await image.decode();
+    const scale=Math.min(3,8192/Math.max(image.naturalWidth,image.naturalHeight));
+    const bitmap=document.createElement('canvas');
+    bitmap.width=Math.max(1,Math.round(image.naturalWidth*scale));
+    bitmap.height=Math.max(1,Math.round(image.naturalHeight*scale));
+    bitmap.getContext('2d').drawImage(image,0,0,bitmap.width,bitmap.height);
+    const png=await new Promise(resolve=>bitmap.toBlob(resolve,'image/png'));
+    if(!png)throw new Error('PNG encoding failed');
+    download(png,'ransom-note.png');
+  } catch (error) {
+    status.textContent='PNG gagal dibuat. Coba unduh lagi.';
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 });
 shuffle();
 </script>
